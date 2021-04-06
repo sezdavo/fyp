@@ -282,7 +282,7 @@ def train(model, training_data, validation_data, optimizer, device, opt):
         print_performances('Validation', valid_ppl, valid_accu, start, lr)
 
         valid_losses += [valid_loss]
-
+        scheduler.step()
         checkpoint = {'epoch': epoch_i, 'settings': opt, 'model': model.state_dict()}
 
         if opt.save_mode == 'all':
@@ -454,8 +454,8 @@ def main():
     #     optim.Adam(transformer.parameters(), betas=(0.9, 0.98), eps=1e-09),
     #     opt.lr_mul, opt.d_model, opt.n_warmup_steps)
 
-    # optimizer = optim.SGD(transformer.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-5) # lr is min lr
-    optimizer = CosineAnnealingWarmupRestarts(optim.SGD(transformer.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-5),
+    optimizer = optim.SGD(transformer.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-5) # lr is min lr
+    scheduler = CosineAnnealingWarmupRestarts(optimizer,
                                           first_cycle_steps=2000,
                                           cycle_mult=1.0,
                                           max_lr=0.15,
