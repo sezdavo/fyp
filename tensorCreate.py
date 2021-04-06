@@ -2,6 +2,9 @@ from pymongo import MongoClient
 import numpy as np
 import math
 from tqdm import tqdm
+import pickle as pkl
+import os
+from os import walk
 
 # Function for turning array id values into strings for saving
 def idValue2String(value):
@@ -19,31 +22,43 @@ def idValue2String(value):
         pass
     return string
 
-# SETUP DATABASE
-cluster = MongoClient("mongodb+srv://sezdavo:Sezmongo1012!@cluster0-wmv2v.mongodb.net/test?retryWrites=true&w=majority")
-db = cluster["PIE"]
-collection = db["pedreps"]
 
-# Grab data from mongo DB
-results = collection.find({})
+# # SETUP DATABASE
+# cluster = MongoClient("mongodb+srv://sezdavo:Sezmongo1012!@cluster0-wmv2v.mongodb.net/test?retryWrites=true&w=majority")
+# db = cluster["PIE"]
+# collection = db["pedreps"]
+
+# # Grab data from mongo DB
+# results = collection.find({})
+
+# Grab pickled files and append to results list
+results = []
+mypath = '/home/azureuser/cloudfiles/code/Users/esd27/pedReps'
+_, _, filenames = next(walk(mypath))
+for f in tqdm(filenames):
+    if f.endswith(".p"):
+        results.append(f)
 
 # Define ID for saving arrays as .npy files
 arrayID = 1
 # Define diagnostics counters for end evaluation
 errorCount = 0
 resultCount = 0
-
+crossCount = 0
+notCrossCount = 0
 # LOOP THROUGH ALL PEDESTRIAN REPRESENTATIONS
 for result in tqdm(results):
     resultCount += 1
-    # Grab all info from representation
-    pedID = result['_id']
-    startFrame = result['startFrame']
-    endFrame = result['endFrame']
-    # print("The end frame is: " + endFrame)
-    trackTime = result['trackTime']
-    itemsList = result['representation']
-
+    # Load pickle file
+    with open('/home/azureuser/cloudfiles/code/Users/esd27/pedReps/' + result, "rb") as f:
+        pickle = pkl.load(f)
+        # Grab all info from representation
+        pedID = pickle['_id']
+        startFrame = pickle['startFrame']
+        endFrame = pickle['endFrame']
+        # print("The end frame is: " + endFrame)
+        trackTime = pickle['trackTime']
+        itemsList = pickle['representation']
     # Build frame index arrays for each 3 seconds encoded chunk of data desired
     # Define first set of start and end frames
     startFrame = int(startFrame)
@@ -76,6 +91,7 @@ for result in tqdm(results):
         # print(array)
         # Empty chunk array    
         chunkArray = [] 
+        foundFrame = array[0]
         # LOOP THROUGH ALL ITEMS AND APPEND DESIRED FRAME OBJECTS
         for item in itemsList:
             # Grab info needed for array
@@ -89,6 +105,10 @@ for result in tqdm(results):
             if match == 1:
                 # Grab info needed for array
                 frame = float(item['frame'])
+                relativeFrame = frame - foundFrame
+                relativeTime = relativeFrame / 30
+                if relativeTime < 0:
+                    print(relativeTime)
                 # Keep grabbing info
                 xCentre = float(item['xCentre'])
                 yCentre = float(item['yCentre'])
@@ -102,11 +122,10 @@ for result in tqdm(results):
                     itself = 1
                     cross = item['cross']
                     action = item['action']
-                    print([cross, action])
                 else:
                     itself = 0
                 # Build array
-                objectArray = [frame, xCentre, yCentre, boxArea, class1, class2, class3, class4, class5, itself]
+                objectArray = [relativeTime, xCentre, yCentre, boxArea, class1, class2, class3, class4, class5, itself]
                 # Turn into numpy array
                 #objectArray = np.array(objectArray)
                 chunkArray.append(objectArray)
@@ -121,24 +140,33 @@ for result in tqdm(results):
                 if chunk[9] == 1:
                     index = i
                 i += 1
-
             # Move query object to the end of the sequence
             length = len(chunkArray)
             chunkArray.append(chunkArray.pop(index))
             prediction = [action, cross]
+            if prediction[1] == 1:
+                crossCount += 1
+            elif prediction[1] == 0:
+                notCrossCount += 1
+                
             package = [np.array(chunkArray), prediction]
             # Turn chunk array into numpy array
             package = np.array(package, dtype=object)
             # Save array
             saveString = idValue2String(arrayID)
-            np.save('/Users/eliot/Documents/FYP/YoloV5/PIE/testdata/' + saveString + '.npy', package)
+            np.save('/home/azureuser/cloudfiles/code/Users/esd27/piedatanew' + saveString + '.npy', package)
             # print("saved array " + saveString)
             # print("of length: " + str(len(chunkArray)))
             arrayID += 1
         except Exception as e:
             errorCount += 1
-            # print(e)
+            print(e)
+            # print(result)
+
 
 
 print(errorCount)
 print(resultCount)
+print(crossCount)
+print(notCrossCount)
+print(chunkArray)
