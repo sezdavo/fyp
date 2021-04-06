@@ -118,7 +118,7 @@ for result in tqdm(results):
             i = 0
             index = 0
             for chunk in chunkArray:
-                if chunk[4] == 1:
+                if chunk[9] == 1:
                     index = i
                 i += 1
 
