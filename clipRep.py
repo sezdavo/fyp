@@ -2,7 +2,8 @@ import xml.etree.ElementTree as ET
 from pymongo import MongoClient
 
 # SETUP DATABASE
-cluster = MongoClient("mongodb+srv://sezdavo:Sezmongo1012!@cluster0-wmv2v.mongodb.net/test?retryWrites=true&w=majority")
+cluster = MongoClient(
+    "mongodb+srv://sezdavo:Sezmongo1012!@cluster0-wmv2v.mongodb.net/test?retryWrites=true&w=majority")
 db = cluster["PIE"]
 collection = db["reps"]
 
@@ -23,6 +24,8 @@ def pie2yolo(h, w, xbr, xtl, ybr, ytl):
     return annotationArray
 
 # Function for turning type of object into classification vector
+
+
 def classifierVector(name):
     # Create classifier vector
     if name == 'pedestrian':
@@ -40,6 +43,8 @@ def classifierVector(name):
     return vector
 
 # Function that converts action strings to numbers
+
+
 def actionConvert(action):
     if action == 'walking':
         action = 1
@@ -50,6 +55,8 @@ def actionConvert(action):
     return action
 
 # Function that converts cross strings to numbers
+
+
 def crossConvert(cross):
     if cross == 'crossing':
         cross = 1
@@ -61,8 +68,10 @@ def crossConvert(cross):
         pass
     return cross
 
-tree = ET.parse('/Users/eliot/Documents/FYP/YoloV5/PIE/annotations/set04/video_0015_annt.xml')
-        
+
+tree = ET.parse(
+    '/Users/eliot/Documents/FYP/YoloV5/PIE/annotations/set04/video_0015_annt.xml')
+
 root = tree.getroot()
 
 # create empty list of dicts (each dict represents an object in a frame)
@@ -82,7 +91,7 @@ for track in tree.findall('track'):
     endFrame = boxList[boxLength-1].attrib.get('frame')
     # Get object ID
     objectID = boxList[0].findall('attribute')[0].text
-    # Loop through boxes and grab information   
+    # Loop through boxes and grab information
     for box in boxList:
         # Get frame number
         frameNumber = box.attrib.get('frame')
@@ -107,21 +116,21 @@ for track in tree.findall('track'):
 
         # Construct mini dictionary
         miniDict = {
-                'frame': frameNumber,
-                'xCentre': str(annotationArray[0]),
-                'yCentre': str(annotationArray[1]),
-                'boxArea': str(annotationArray[2]*annotationArray[3]),
-                'objectClass': vector,
-                'action': action,
-                'cross': cross,
-                'objectID': objectID,
-                'startFrame': startFrame,
-                'endFrame': endFrame
-            }
+            'frame': frameNumber,
+            'xCentre': str(annotationArray[0]),
+            'yCentre': str(annotationArray[1]),
+            'boxArea': str(annotationArray[2]*annotationArray[3]),
+            'objectClass': vector,
+            'action': action,
+            'cross': cross,
+            'objectID': objectID,
+            'startFrame': startFrame,
+            'endFrame': endFrame
+        }
         # Check to see dictList contains any values
-        
+
         # Define appended tracker
-        appended = 0  
+        appended = 0
         # Define index tracker
         index = 0
         if dictList:
@@ -137,7 +146,7 @@ for track in tree.findall('track'):
                     pass
                 index += 1
             if appended == 0:
-                dictList.append(miniDict)   
+                dictList.append(miniDict)
         else:
             dictList.append(miniDict)
         counter += 1
@@ -151,4 +160,3 @@ post = {"_id": 'set04/video_0015',
         }
 
 collection.insert_one(post)
-

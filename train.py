@@ -28,7 +28,7 @@ def getLengths(batch):
     arrayLengths = []
     # Loop through batch items and obtain max length
     for item in batch:
-        package = np.load('piedata/' + item, allow_pickle=True)
+        package = np.load('Users/esd27/piedata/' + item, allow_pickle=True)
         array = package[0]
         arrayLengths.append(len(array))
     # Calculate max length
@@ -39,7 +39,7 @@ def getLengths(batch):
 # Function for unloading required pieces of data from .npy file
 def unloadData(item):
     # Load data package from .npy file
-    package = np.load('piedata/' + item, allow_pickle=True)
+    package = np.load('Users/esd27/piedata/' + item, allow_pickle=True)
     array = package[0]
     truth = torch.tensor(package[1]).float()
     length = len(array)
@@ -312,7 +312,7 @@ def train(model, training_data, validation_data, optimizer, device, opt):
 def loadData(device):
     batchSize = 32
     
-    mypath = 'piedata'
+    mypath = 'Users/esd27/piedata'
     _, _, filenames = next(walk(mypath))
 
     train_iterator = []
