@@ -33,7 +33,7 @@ def idValue2String(value):
 
 # Grab pickled files and append to results list
 results = []
-mypath = '/home/azureuser/cloudfiles/code/Users/esd27/pedReps'
+mypath = 'pedReps'
 _, _, filenames = next(walk(mypath))
 for f in tqdm(filenames):
     if f.endswith(".p"):
@@ -46,11 +46,14 @@ errorCount = 0
 resultCount = 0
 crossCount = 0
 notCrossCount = 0
+
+
+
 # LOOP THROUGH ALL PEDESTRIAN REPRESENTATIONS
 for result in tqdm(results):
     resultCount += 1
     # Load pickle file
-    with open('/home/azureuser/cloudfiles/code/Users/esd27/pedReps/' + result, "rb") as f:
+    with open('pedReps/' + result, "rb") as f:
         pickle = pkl.load(f)
         # Grab all info from representation
         pedID = pickle['_id']
@@ -59,6 +62,28 @@ for result in tqdm(results):
         # print("The end frame is: " + endFrame)
         trackTime = pickle['trackTime']
         itemsList = pickle['representation']
+    # Get OBD array
+    setID = '0' + pedID[0]
+    videoID = None
+    try:
+        int(pedID[2])
+        videoID = pedID[2]
+    except Exception as e:
+        pass
+    try:
+        int(pedID[3])
+        videoID = videoID + pedID[3]
+    except Exception as e:
+        pass
+    if len(videoID) == 2:
+        videoID = videoID
+    else:
+        videoID =  '0' + videoID
+    # make string
+    string = 'set' + setID + 'video' + videoID + '.p'
+    print
+    with open('speedArrays/' + string, "rb") as f:
+        speedArray = pkl.load(f)
     # Build frame index arrays for each 3 seconds encoded chunk of data desired
     # Define first set of start and end frames
     startFrame = int(startFrame)
@@ -124,8 +149,10 @@ for result in tqdm(results):
                     action = item['action']
                 else:
                     itself = 0
+                # Get speed
+                speed = speedArray[int(frame)]
                 # Build array
-                objectArray = [relativeTime, xCentre, yCentre, boxArea, class1, class2, class3, class4, class5, itself]
+                objectArray = [relativeTime, xCentre, yCentre, boxArea, itself, speed, class1, class2, class3, class4, class5, 0]
                 # Turn into numpy array
                 #objectArray = np.array(objectArray)
                 chunkArray.append(objectArray)
@@ -137,7 +164,7 @@ for result in tqdm(results):
             i = 0
             index = 0
             for chunk in chunkArray:
-                if chunk[9] == 1:
+                if chunk[4] == 1:
                     index = i
                 i += 1
             # Move query object to the end of the sequence
@@ -154,7 +181,7 @@ for result in tqdm(results):
             package = np.array(package, dtype=object)
             # Save array
             saveString = idValue2String(arrayID)
-            np.save('/home/azureuser/cloudfiles/code/Users/esd27/piedatanew' + saveString + '.npy', package)
+            np.save('piedata/' + saveString + '.npy', package)
             # print("saved array " + saveString)
             # print("of length: " + str(len(chunkArray)))
             arrayID += 1
