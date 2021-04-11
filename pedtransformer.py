@@ -140,10 +140,10 @@ class Classifier(nn.Module):
 class Trunk(nn.Module):
     def __init__(
         self,
-        embed_size= 10,
-        num_layers=1,
+        embed_size= 12,
+        num_layers=3,
         forward_expansion=4,
-        heads=1,
+        heads=2,
         dropout=0.1,
         device="cuda",
         # Maximum length of input sequence

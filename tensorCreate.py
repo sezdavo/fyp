@@ -1,5 +1,4 @@
-from pymongo import MongoClient
-import numpy as np
+#sImport necessart libraried
 import math
 from tqdm import tqdm
 import pickle as pkl
@@ -23,37 +22,31 @@ def idValue2String(value):
     return string
 
 
-# # SETUP DATABASE
-# cluster = MongoClient("mongodb+srv://sezdavo:Sezmongo1012!@cluster0-wmv2v.mongodb.net/test?retryWrites=true&w=majority")
-# db = cluster["PIE"]
-# collection = db["pedreps"]
-
-# # Grab data from mongo DB
-# results = collection.find({})
-
+# SETUP DATABASE
 # Grab pickled files and append to results list
 results = []
-mypath = 'pedReps'
+mypath = '/home/azureuser/cloudfiles/code/Users/esd27/pedreps'
 _, _, filenames = next(walk(mypath))
+# Loop through files and grab IF type = pickle file
 for f in tqdm(filenames):
     if f.endswith(".p"):
         results.append(f)
 
-# Define ID for saving arrays as .npy files
+# Define ID for saving arrays as .p files
 arrayID = 1
 # Define diagnostics counters for end evaluation
 errorCount = 0
 resultCount = 0
 crossCount = 0
 notCrossCount = 0
-
-
+walkCount = 0
+standCount = 0
 
 # LOOP THROUGH ALL PEDESTRIAN REPRESENTATIONS
 for result in tqdm(results):
     resultCount += 1
     # Load pickle file
-    with open('pedReps/' + result, "rb") as f:
+    with open('/home/azureuser/cloudfiles/code/Users/esd27/pedreps/' + result, "rb") as f:
         pickle = pkl.load(f)
         # Grab all info from representation
         pedID = pickle['_id']
@@ -62,8 +55,10 @@ for result in tqdm(results):
         # print("The end frame is: " + endFrame)
         trackTime = pickle['trackTime']
         itemsList = pickle['representation']
-    # Get OBD array
+    # Get OBD array for speed values
+    # Get set ID
     setID = '0' + pedID[0]
+    # Get video ID by checking whether nuber is double or singled digit
     videoID = None
     try:
         int(pedID[2])
@@ -81,8 +76,8 @@ for result in tqdm(results):
         videoID =  '0' + videoID
     # make string
     string = 'set' + setID + 'video' + videoID + '.p'
-    print
-    with open('speedArrays/' + string, "rb") as f:
+    # Load speed array for indexing
+    with open('/home/azureuser/cloudfiles/code/Users/esd27/speedArrays/' + string, "rb") as f:
         speedArray = pkl.load(f)
     # Build frame index arrays for each 3 seconds encoded chunk of data desired
     # Define first set of start and end frames
@@ -153,12 +148,12 @@ for result in tqdm(results):
                 speed = speedArray[int(frame)]
                 # Build array
                 objectArray = [relativeTime, xCentre, yCentre, boxArea, itself, speed, class1, class2, class3, class4, class5, 0]
-                # Turn into numpy array
-                #objectArray = np.array(objectArray)
+                # Append onto main array
                 chunkArray.append(objectArray)
             else:
                 pass
         
+        # Use try statement to catch and print errors
         try:
             # Iterate through chunk array and find query object index
             i = 0
@@ -171,17 +166,24 @@ for result in tqdm(results):
             length = len(chunkArray)
             chunkArray.append(chunkArray.pop(index))
             prediction = [action, cross]
+            # EVAL
             if prediction[1] == 1:
                 crossCount += 1
             elif prediction[1] == 0:
                 notCrossCount += 1
-                
-            package = [np.array(chunkArray), prediction]
+            if prediction[0] == 1:
+                walkCount += 1
+            elif prediction[0] == 0:
+                standCount += 1  
+            # package = [np.array(chunkArray), prediction]
+            package = [chunkArray, prediction]
+            # print(chunkArray[length-1])
             # Turn chunk array into numpy array
-            package = np.array(package, dtype=object)
+            # package = np.array(package, dtype=object)
             # Save array
             saveString = idValue2String(arrayID)
-            np.save('piedata/' + saveString + '.npy', package)
+            # np.save('piedata/' + saveString + '.npy', package)
+            pkl.dump(package, open('/home/azureuser/cloudfiles/code/Users/esd27/piedatanew/' + saveString + '.p', 'wb'))
             # print("saved array " + saveString)
             # print("of length: " + str(len(chunkArray)))
             arrayID += 1
@@ -190,10 +192,16 @@ for result in tqdm(results):
             print(e)
             # print(result)
 
-
-
+# Print evaluation metrics
+print('errorCount')
 print(errorCount)
+print('resultCount')
 print(resultCount)
+print('crossCount')
 print(crossCount)
+print('notCrossCount')
 print(notCrossCount)
-print(chunkArray)
+print('standCount')
+print(standCount)
+print('walkCount')
+print(walkCount)

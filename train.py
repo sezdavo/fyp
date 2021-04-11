@@ -7,9 +7,10 @@ import numpy as np
 import random
 import os
 from os import walk
-import dill as pickle
+# import dill as pickle
+import pickle as pkl
 import wandb
-import cupy as cu
+# import cupy as cu
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,22 +29,27 @@ def getLengths(batch):
     arrayLengths = []
     # Loop through batch items and obtain max length
     for item in batch:
-        package = np.load('Users/esd27/piedata/' + item, allow_pickle=True)
-        array = package[0]
-        arrayLengths.append(len(array))
+        # package = np.load('Users/esd27/piedata/' + item, allow_pickle=True)
+        with open('/home/azureuser/cloudfiles/code/Users/esd27/piedatanew/' + item, "rb") as f:
+            package = pkl.load(f)
+            array = package[0]
+            arrayLengths.append(len(array))
     # Calculate max length
-    maxLength = np.amax(arrayLengths)
+    # maxLength = np.amax(arrayLengths)
+    maxLength = max(arrayLengths)
 
     return maxLength
 
 # Function for unloading required pieces of data from .npy file
 def unloadData(item):
     # Load data package from .npy file
-    package = np.load('Users/esd27/piedata/' + item, allow_pickle=True)
-    array = package[0]
-    truth = torch.tensor(package[1]).float()
-    length = len(array)
-    query = array[length-1]
+    # package = np.load('Users/esd27/piedata/' + item, allow_pickle=True)
+    with open('/home/azureuser/cloudfiles/code/Users/esd27/piedatanew/' + item, "rb") as f:
+        package = pkl.load(f)
+        array = package[0]
+        truth = torch.tensor(package[1]).float()
+        length = len(array)
+        query = array[length-1]
 
     return array, query, truth, length
 
@@ -52,16 +58,18 @@ def padArray(maxLength, length, array):
     # Calculate number of padding chunks required
     paddingNumber = maxLength - length
     # Define padding array
-    padding = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    # padding = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    padding = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     # If padding required add padding
     if paddingNumber > 0:
         for i in range(paddingNumber):
             # Insert padding
-            array = np.insert(array, 0, padding, axis = 0)
+            # array = np.insert(array, 0, padding, axis = 0)
+            array.insert(0, padding)
         newArray = array
     else:
         newArray = array
-
+    
     return newArray
 
 # Gets position vectors for positional embedding
@@ -96,11 +104,13 @@ def buildBatch(batch, device):
         # Load item and extract the array, the query and the prediction
         array, query, truth, length = unloadData(item)
         # Pad to maximum length
-        newArray = padArray(maxLength, length, array)
-        array = newArray
+        array = padArray(maxLength, length, array)
         # Create example
-        seqItem = torch.from_numpy(newArray).float().to(device)
-        qItem = torch.from_numpy(query).unsqueeze(0).float().to(device)
+        # seqItem = torch.from_numpy(newArray).float().to(device)
+        # qItem = torch.from_numpy(query).unsqueeze(0).float().to(device)
+        # truthItem = truth.unsqueeze(0).to(device)
+        seqItem = torch.tensor(array).float().to(device)
+        qItem = torch.tensor(query).unsqueeze(0).float().to(device)
         truthItem = truth.unsqueeze(0).to(device)
         # Stack examples
         if count == 0:
@@ -122,12 +132,13 @@ def buildBatch(batch, device):
     return seq, q, tru
 
 
+
 # DEFINE A TRAINING EPOCH
 # A training epoch is one single loop through all of the data
 # We are definfing the epoch here for use in the loop in the train() function
-def train_epoch(model, training_data, optimizer, opt, device, smoothing):
+def train_epoch(model, training_data, optimizer, scheduler, opt, device, smoothing):
     ''' Epoch operation in training phase'''
-    
+    checked = 0
     model.train()
     # define note keeping variables
     total_loss, n_pred_correct, n_pred_total = 0, 0, 0
@@ -142,7 +153,11 @@ def train_epoch(model, training_data, optimizer, opt, device, smoothing):
         seq = batch['seq']
         q = batch['q']
         tru = batch['tru']
-
+        if checked <= 5:
+            print(seq[0])
+            print(q[0])
+            print(tru[0])
+            checked += 1
         # Build positions vector
         positions = getPositions(seq).to(device)
 
@@ -154,23 +169,27 @@ def train_epoch(model, training_data, optimizer, opt, device, smoothing):
         loss = criterion(prediction, tru)
         # running_loss += loss.item()  
         loss.backward()
-        # optimizer.step_and_update_lr()
         optimizer.step()
+        
         wandb.log({"lr": scheduler.lr})
         # note keeping
         for i in range(len(prediction)):
             # First prediction (action)
-            if prediction[i][0][0] >= 0.5:
+            if prediction[i][0][0] >= 0.75:
                 prediction[i][0][0] = 1
+            elif prediction[i][0][0] <= 0.25:
+                prediction[i][0][0] = 0
             else:
-                prediction[i][0][0] = 1
+                pass
             # Second prediction (cross)
-            if prediction[i][0][1] >= 0.5:
+            if prediction[i][0][1] >= 0.75:
                 prediction[i][0][1] = 1
-            elif prediction[i][0][1] >= -0.5:
+            elif prediction[i][0][1] <= 0.25 and prediction[i][0][1] >= -0.25:
                 prediction[i][0][1] = 0
-            else:
+            elif prediction[i][0][1] <= -0.75:
                 prediction[i][0][1] = -1
+            else:
+                pass
             # Compare with truths and keep score
             if prediction[i][0][0] == tru[i][0][0]:
                 n_pred_correct += 1
@@ -210,25 +229,29 @@ def eval_epoch(model, validation_data, device, opt):
             loss = criterion(prediction, tru)
 
             # note keeping
-            for i in range(len(prediction)):
-                # First prediction (action)
-                if prediction[i][0][0] >= 0.5:
-                    prediction[i][0][0] = 1
-                else:
-                    prediction[i][0][0] = 1
-                # Second prediction (cross)
-                if prediction[i][0][1] >= 0.5:
-                    prediction[i][0][1] = 1
-                elif prediction[i][0][1] >= -0.5:
-                    prediction[i][0][1] = 0
-                else:
-                    prediction[i][0][1] = -1
-                # Compare with truths and keep score
-                if prediction[i][0][0] == tru[i][0][0]:
-                    n_pred_correct += 1
-                if prediction[i][0][1] == tru[i][0][1]:
-                    n_pred_correct += 1
-                n_pred_total += 2
+        for i in range(len(prediction)):
+            # First prediction (action)
+            if prediction[i][0][0] >= 0.75:
+                prediction[i][0][0] = 1
+            elif prediction[i][0][0] <= 0.25:
+                prediction[i][0][0] = 0
+            else:
+                pass
+            # Second prediction (cross)
+            if prediction[i][0][1] >= 0.75:
+                prediction[i][0][1] = 1
+            elif prediction[i][0][1] <= 0.25 and prediction[i][0][1] >= -0.25:
+                prediction[i][0][1] = 0
+            elif prediction[i][0][1] <= -0.75:
+                prediction[i][0][1] = -1
+            else:
+                pass
+            # Compare with truths and keep score
+            if prediction[i][0][0] == tru[i][0][0]:
+                n_pred_correct += 1
+            if prediction[i][0][1] == tru[i][0][1]:
+                n_pred_correct += 1
+            n_pred_total += 2
 
             total_loss += loss.item()
     
@@ -238,7 +261,7 @@ def eval_epoch(model, validation_data, device, opt):
     return loss_per_pred, accuracy
 
 
-def train(model, training_data, validation_data, optimizer, device, opt):
+def train(model, training_data, validation_data, optimizer, scheduler, device, opt):
     ''' Start training '''
     wandb.watch(model)
     # Use tensorboard to plot curves, e.g. perplexity, accuracy, learning rate
@@ -269,11 +292,13 @@ def train(model, training_data, validation_data, optimizer, device, opt):
         print('[ Epoch', epoch_i, ']')
 
         start = time.time()
+        scheduler.step()
         train_loss, train_accu = train_epoch(
-            model, training_data, optimizer, opt, device, smoothing=opt.label_smoothing)
+            model, training_data, optimizer, scheduler, opt, device, smoothing=opt.label_smoothing)
         train_ppl = math.exp(min(train_loss, 100))
         # Current learning rate
-        lr = optimizer._optimizer.param_groups[0]['lr']
+        # lr = optimizer._optimizer.param_groups[0]['lr']
+        lr = scheduler.lr
         print_performances('Training', train_ppl, train_accu, start, lr)
 
         start = time.time()
@@ -282,7 +307,7 @@ def train(model, training_data, validation_data, optimizer, device, opt):
         print_performances('Validation', valid_ppl, valid_accu, start, lr)
 
         valid_losses += [valid_loss]
-        scheduler.step()
+        
         checkpoint = {'epoch': epoch_i, 'settings': opt, 'model': model.state_dict()}
 
         if opt.save_mode == 'all':
@@ -312,7 +337,7 @@ def train(model, training_data, validation_data, optimizer, device, opt):
 def loadData(device):
     batchSize = 32
     
-    mypath = 'Users/esd27/piedata'
+    mypath = '/home/azureuser/cloudfiles/code/Users/esd27/piedatanew'
     _, _, filenames = next(walk(mypath))
 
     train_iterator = []
@@ -325,7 +350,7 @@ def loadData(device):
     batchCounter = 0
     batch = []
     for f in filenames:
-        if f.endswith(".npy"):
+        if f.endswith(".p"):
             
             if counter <= switch:
                 if batchCounter < batchSize:
@@ -352,25 +377,25 @@ def loadData(device):
             counter += 1
     counter = 0
     for batch in tqdm(train_files):
-        if counter <= 10:
-            seq, q, tru = buildBatch(batch, device)
-            build = {"seq": seq,
-                    "q": q,
-                    "tru": tru
-            }
-            train_iterator.append(build)
-        counter += 1
+        # if counter <= 20:
+        seq, q, tru = buildBatch(batch, device)
+        build = {"seq": seq,
+                "q": q,
+                "tru": tru
+        }
+        train_iterator.append(build)
+        # counter += 1
     
     counter = 0
     for batch in tqdm(val_files):
-        if counter <= 10:
-            seq, q, tru = buildBatch(batch, device)
-            build = {"seq": seq,
-                    "q": q,
-                    "tru": tru
-            }
-            val_iterator.append(build)
-        counter += 1
+        # if counter <= 20:
+        seq, q, tru = buildBatch(batch, device)
+        build = {"seq": seq,
+                "q": q,
+                "tru": tru
+        }
+        val_iterator.append(build)
+        # counter += 1
 
     return train_iterator, val_iterator
 
@@ -385,7 +410,7 @@ def main():
     parser.add_argument('-epoch', type=int, default=100)
     parser.add_argument('-b', '--batch_size', type=int, default=8)
 
-    parser.add_argument('-d_model', type=int, default=10)
+    parser.add_argument('-d_model', type=int, default=12)
     parser.add_argument('-d_inner_hid', type=int, default=2048)
     parser.add_argument('-d_k', type=int, default=64)
     parser.add_argument('-d_v', type=int, default=64)
@@ -393,7 +418,7 @@ def main():
     parser.add_argument('-n_head', type=int, default=1)
     parser.add_argument('-n_layers', type=int, default=1)
     parser.add_argument('-warmup','--n_warmup_steps', type=int, default=1000)
-    parser.add_argument('-lr_mul', type=float, default=10.0)
+    parser.add_argument('-lr_mul', type=float, default=50.0)
     parser.add_argument('-seed', type=int, default=None)
 
     parser.add_argument('-dropout', type=float, default=0.1)
@@ -456,15 +481,15 @@ def main():
 
     optimizer = optim.SGD(transformer.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-5) # lr is min lr
     scheduler = CosineAnnealingWarmupRestarts(optimizer,
-                                          first_cycle_steps=2000,
+                                          first_cycle_steps=50,
                                           cycle_mult=1.0,
-                                          max_lr=0.15,
+                                          max_lr=0.1,
                                           min_lr=0.01,
-                                          warmup_steps=500,
+                                          warmup_steps=10,
                                           gamma=1.0)
 
     # train(transformer, training_data, validation_data, optimizer, device, opt)
-    train(transformer, training_data, validation_data, optimizer, device, opt)
+    train(transformer, training_data, validation_data, optimizer, scheduler, device, opt)
 
 if __name__ == '__main__':
     main()
